@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Container from './Container/Container';
@@ -9,120 +9,82 @@ import Loader from './Loader/Loader';
 import Button from './Button/Button';
 import Modal from './Modal/Modal';
 
-class App extends Component {
-  state = {
-    query: '',
-    images: [],
-    largeImageURL: '',
-    page: 1,
-    error: null,
-    isLoading: false,
-    showModal: false,
-    showBtn: false,
-  };
+function App() {
+  const [query, setQuery] = useState('');
+  const [images, setImages] = useState([]);
+  const [largeImageURL, setLargeImageURL] = useState('');
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showBtn, setShowBtn] = useState(false);
 
-  async componentDidUpdate(_prevProps, prevState) {
-    if (
-      prevState.query !== this.state.query ||
-      prevState.page !== this.state.page
-    ) {
-      await this.setState({
-        isLoading: true,
-      });
-      this.searchImages();
-    }
-  }
+  useEffect(() => {
+    if (!query) return;
 
-  searchImages = async () => {
-    const { query, page } = this.state;
+    const searchImages = async () => {
+      try {
+        const request = await fetchImages(query, page);
+        const { hits, totalHits } = request.data;
 
-    this.setState({
-      isLoading: true,
-    });
-
-    try {
-      const request = await fetchImages(query, page);
-      const { hits, totalHits } = request.data;
-      if (!hits.length) {
-        this.setState({
-          isLoading: false,
-        });
-        return toast.info('Sorry, no images found. Please, try again!');
+        if (!hits.length) {
+          return toast.info('Sorry, no images found. Please, try again!');
+        }
+        setImages(prevImages => (page === 1 ? hits : [...prevImages, ...hits]));
+        setShowBtn(page < Math.ceil(totalHits / 12));
+      } catch (error) {
+        setError('Oops! Something went wrong');
+      } finally {
+        setIsLoading(false);
       }
+    };
 
-      this.setState(prevState => ({
-        images: [...prevState.images, ...hits],
-        isLoading: false,
-        showBtn: page < Math.ceil(totalHits / 12),
-      }));
+    searchImages();
+  }, [page, query]);
 
-      if (request.length === 0) {
-        this.setState({ error: `No found ${query}` });
-      }
-    } catch (error) {
-      this.setState({ error: 'Oops! Something went wrong' });
-    }
+  const handleSubmit = newSearch => {
+    if (newSearch === query) return;
+    setQuery(newSearch);
+    setImages([]);
+    setPage(1);
+    setError(null);
+    setIsLoading(false);
+    setShowBtn(false);
+    setShowModal(false);
+    setLargeImageURL('');
   };
 
-  onHandleQuery = query => {
-    if (query === this.state.query) {
-      return toast.info(`Images of ${query} have already been displayed.`);
-    }
-
-    this.setState({ images: [], page: 1, error: null, query });
+  const onLoadMore = () => {
+    // setIsLoading(true);
+    setPage(prevPage => prevPage + 1);
   };
 
-  onLoadMore = () => {
-    this.setState(prevState => ({ page: prevState.page + 1 }));
+  const onOpenModal = evt => {
+    setLargeImageURL(evt.target.dataset.source);
+    toggleModal(!isLoading);
   };
 
-  onOpenModal = e => {
-    this.setState({ largeImageURL: e.target.dataset.source });
-    this.toggleModal();
+  const toggleModal = () => {
+    setShowModal(!showModal);
   };
 
-  toggleModal = () => {
-    this.setState(({ showModal }) => ({
-      showModal: !showModal,
-    }));
-  };
+  return (
+    <Container>
+      <Searchbar onSubmit={handleSubmit} />
 
-  errorString = async () => {
-    await this.setState({
-      isLoading: false,
-      images: [],
-      error: [],
-    });
-  };
+      {isLoading && <Loader />}
 
-  render() {
-    const { images, largeImageURL, isLoading, showModal, error, showBtn } =
-      this.state;
-    return (
-      <Container>
-        <Searchbar onSubmit={this.onHandleQuery} value={this.errorString} />
+      <ImageGallary images={images} error={error} onOpenModal={onOpenModal} />
 
-        {isLoading && <Loader />}
+      {showBtn && !error && <Button onLoadMore={onLoadMore} />}
 
-        <ImageGallary
-          images={images}
-          error={error}
-          onOpenModal={this.onOpenModal}
-        />
+      {showModal && (
+        <Modal onToggleModal={toggleModal} largeImageURL={largeImageURL} />
+      )}
 
-        {showBtn && !error && <Button onLoadMore={this.onLoadMore} />}
-
-        {showModal && (
-          <Modal
-            onToggleModal={this.toggleModal}
-            largeImageURL={largeImageURL}
-          />
-        )}
-
-        <ToastContainer autoClose={2500} />
-      </Container>
-    );
-  }
+      <ToastContainer autoClose={2500} />
+    </Container>
+  );
 }
 
 export default App;
